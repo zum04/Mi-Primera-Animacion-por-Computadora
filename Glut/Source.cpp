@@ -1,10 +1,18 @@
 #include <GL/glut.h>
 #include <math.h>
 
-#define MAX_VECTORES 20
+#define MAX_VECTORES 200
 #define MAX_GRUPOS 10
 
 typedef float Mat4[16];
+
+typedef struct {
+    float tiempoInicio;
+    float tiempoFin;
+    float anguloActual;
+    float desplazamiento;
+    float fase;
+} EstadoAnimacion;
 
 typedef struct {
     float x0, y0;
@@ -20,9 +28,10 @@ typedef struct {
     float angulo;     // Ángulo interno por grupo
 } Grupo;
 
+EstadoAnimacion estadosAnimacion[MAX_GRUPOS];
 Grupo grupos[MAX_GRUPOS];
 int numGrupos = 0;
-
+int tiempoEstado = 0;
 const float PI = 3.14159;
 
 void drawVector2D(float x0, float y0, float x1, float y1) {
@@ -37,14 +46,19 @@ void matIdentidad(Mat4 m);
 void matRotacion(Mat4 m, float angulo);
 void matTraslacion(Mat4 m, float tx, float ty);
 void matEscalado(Mat4 m, float sx, float sy);
+void actualizarAnimacion(int);
+void reshape(int, int);
 
-void aplicarTransformacionYdibujarGrupo(Grupo* grupo) {
+// Se añade el parámetro tiempoActual para decidir qué vectores dibujar
+void aplicarTransformacionYdibujarGrupo(Grupo* grupo, int tiempoActual) {
     glPushMatrix();
     glMultMatrixf(grupo->transformacion);
+
     for (int i = 0; i < grupo->numVectores; i++) {
         drawVector2D(grupo->vectores[i].x0, grupo->vectores[i].y0,
             grupo->vectores[i].x1, grupo->vectores[i].y1);
     }
+
     glPopMatrix();
 }
 
@@ -57,87 +71,89 @@ void display() {
     drawVector2D(0, -1, 0, 1);
 
     glColor3f(1, 0, 0);
-    aplicarTransformacionYdibujarGrupo(&grupos[0]);
+    aplicarTransformacionYdibujarGrupo(&grupos[0], tiempoEstado);
 
-    glColor3f(0.5f, 0, 0);
-    aplicarTransformacionYdibujarGrupo(&grupos[1]);
+    glColor3f(0.5f, 0.5f, 1);
+    aplicarTransformacionYdibujarGrupo(&grupos[1], tiempoEstado);
 
     glutSwapBuffers();
 }
 
-void update(int value) {
+void actualizarAnimacion(int tiempoGlobal) {
     for (int i = 0; i < numGrupos; i++) {
-        Grupo* g = &grupos[i];
-        g->tiempo += 50;
+        Grupo* grupo = &grupos[i];
+        EstadoAnimacion* estado = &estadosAnimacion[i];
 
-        Mat4 nueva;
-        matIdentidad(nueva);
+        // Para grupo 1 (onda seno), solo dibujar si ya empezó
+        if (i == 1) {
+            if (tiempoGlobal < estado->tiempoInicio) {
+                grupo->numVectores = 0;
+                matIdentidad(grupo->transformacion);
+                continue;
+            }
 
-        if (g->estado == 0) {
-            g->angulo += 2.0f;
-            matRotacion(nueva, g->angulo);
+            // tiempoParaFase no puede superar el tiempoFin
+            int tiempoParaFase = tiempoGlobal;
+            if (tiempoParaFase > estado->tiempoFin)
+                tiempoParaFase = estado->tiempoFin;
+
+            float tiempoSegundos = tiempoParaFase / 1000.0f;
+            float A = 0.05f;
+            float f = 8.0f;
+            float fase = tiempoSegundos * 4.0f;
+
+            float xStart = -1.0f;
+            float xEnd = 1.0f;
+            int numSegmentos = 200;
+
+            grupo->numVectores = 0;
+            for (int j = 0; j < numSegmentos; j++) {
+                float x0 = xStart + (xEnd - xStart) * j / numSegmentos;
+                float x1 = xStart + (xEnd - xStart) * (j + 1) / numSegmentos;
+                float y0 = A * sinf(f * x0 - fase) - 1.5f;
+                float y1 = A * sinf(f * x1 - fase) - 0.2f;
+
+                if (grupo->numVectores < MAX_VECTORES) {
+                    grupo->vectores[grupo->numVectores].x0 = x0;
+                    grupo->vectores[grupo->numVectores].y0 = y0;
+                    grupo->vectores[grupo->numVectores].x1 = x1;
+                    grupo->vectores[grupo->numVectores].y1 = y1;
+                    grupo->numVectores++;
+                }
+            }
+            matIdentidad(grupo->transformacion);
+            continue;
         }
-        else if (g->estado == 1) {
-            float tx = sin(g->angulo * PI / 180.0f) * 0.5f;
-            matTraslacion(nueva, tx, 0);
-        }
-        else if (g->estado == 2) {
-            float scale = 0.5f + 0.5f * sin(g->angulo * PI / 180.0f);
-            matEscalado(nueva, scale, scale);
-        }
 
-        for (int j = 0; j < 16; j++)
-            g->transformacion[j] = nueva[j];
-
-        if (g->tiempo > 5000) {
-            g->tiempo = 0;
-            g->estado = (g->estado + 1) % 3;
+        // Para otros grupos, calcular tiempo local sin modificar tiempoGlobal
+        if (tiempoGlobal < estado->tiempoInicio) {
+            // No iniciar animación
+            matIdentidad(grupo->transformacion);
+            continue;
         }
 
-        g->angulo += 2.0f;
+        int tiempoLocal = tiempoGlobal;
+        if (tiempoLocal > estado->tiempoFin)
+            tiempoLocal = estado->tiempoFin;
+
+        float t = (tiempoLocal - estado->tiempoInicio) / (float)(estado->tiempoFin - estado->tiempoInicio);
+        float angulo = t * 360.0f;
+
+        matIdentidad(grupo->transformacion);
+        matRotacion(grupo->transformacion, angulo);
     }
+}
 
+
+void update(int value) {
+    tiempoEstado += 50;
+    actualizarAnimacion(tiempoEstado);
     glutPostRedisplay();
     glutTimerFunc(50, update, 0);
 }
 
-void reshape(int width, int height) {
-    if (height == 0) height = 1;
-    float windowAspect = (float)width / (float)height;
-    const float targetAspect = 16.0f / 9.0f;
-    int vpX, vpY, vpWidth, vpHeight;
-
-    if (windowAspect > targetAspect) {
-        vpHeight = height;
-        vpWidth = (int)(height * targetAspect);
-        vpX = (width - vpWidth) / 2;
-        vpY = 0;
-    }
-    else {
-        vpWidth = width;
-        vpHeight = (int)(width / targetAspect);
-        vpX = 0;
-        vpY = (height - vpHeight) / 2;
-    }
-
-    glViewport(vpX, vpY, vpWidth, vpHeight);
-
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
-    float aspect = (float)vpWidth / (float)vpHeight;
-    if (aspect >= 1.0f) {
-        gluOrtho2D(-aspect, aspect, -1.0, 1.0);
-    }
-    else {
-        gluOrtho2D(-1.0, 1.0, -1.0 / aspect, 1.0 / aspect);
-    }
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-}
-
 void initGrupos() {
+    // ----- Grupo 0: figura compuesta -----
     Grupo* g0 = &grupos[0];
     g0->numVectores = 0;
 
@@ -164,7 +180,23 @@ void initGrupos() {
     g0->vectores[g0->numVectores++] = v;
     matIdentidad(g0->transformacion);
 
-    numGrupos = 1;
+    estadosAnimacion[0].tiempoInicio = 0;
+    estadosAnimacion[0].tiempoFin = 5000;
+    estadosAnimacion[0].anguloActual = 0.0f;
+    estadosAnimacion[0].desplazamiento = 0.0f;
+
+    // ----- Grupo 1: curva seno -----
+    Grupo* g1 = &grupos[1];
+    g1->numVectores = 0;
+    matIdentidad(g1->transformacion);
+
+    // Nota: aquí solo inicializamos vectores, pero serán actualizados dinámicamente
+    estadosAnimacion[1].tiempoInicio = 1000;  // Ejemplo: empieza en 2s
+    estadosAnimacion[1].tiempoFin = 8000;
+    estadosAnimacion[1].anguloActual = 0.0f;
+    estadosAnimacion[1].desplazamiento = 0.0f;
+
+    numGrupos = 2;
 }
 
 void init() {
@@ -177,11 +209,11 @@ void init() {
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-    glutInitWindowSize(800, 450);
+    glutInitWindowSize(900, 900);
     glutCreateWindow("Animacion con Grupos de Vectores");
 
     init();
-    reshape(800, 450);
+    reshape(900, 900);
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutTimerFunc(50, update, 0);
@@ -228,4 +260,24 @@ void matEscalado(Mat4 m, float sx, float sy) {
     matIdentidad(m);
     m[0] = sx;
     m[5] = sy;
+}
+
+void reshape(int width, int height) {
+    if (height == 0) height = 1;
+    float aspect = (float)width / (float)height;
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    if (aspect >= 1.0f) {
+        // Ventana más ancha que alta
+        gluOrtho2D(-1.0 * aspect, 1.0 * aspect, -1.0, 1.0);
+    }
+    else {
+        // Ventana más alta que ancha
+        gluOrtho2D(-1.0, 1.0, -1.0 / aspect, 1.0 / aspect);
+    }
+
+    glMatrixMode(GL_MODELVIEW);
 }

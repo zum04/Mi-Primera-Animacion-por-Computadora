@@ -61,10 +61,8 @@ void aplicarTransformacionYdibujarGrupo(Grupo* grupo, int tiempoActual) {
 
     glPopMatrix();
 }
-
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(0.12f, 0.12f, 0.15f, 1.0f); // Fondo azul claro
     glLoadIdentity();
     for (int i = 0; i < numGrupos; i++) {
         EstadoAnimacion* estado = &estadosAnimacion[i];
@@ -78,9 +76,9 @@ void display() {
             aplicarTransformacionYdibujarGrupo(&grupos[i], tiempoEstado);
         }
     }
-
     glutSwapBuffers();
 }
+
 
 float easeInOut(float t) {
     return t * t * (3 - 2 * t);  // Hermite curve
@@ -103,7 +101,7 @@ void actualizarAnimacion(int tiempoGlobal) {
                 continue;
             }
 
-            // tiempoParaFase no puede superar el tiempoFin
+
             int tiempoParaFase = tiempoGlobal;
             if (tiempoParaFase > estado->tiempoFin)
                 tiempoParaFase = estado->tiempoFin;
@@ -114,7 +112,6 @@ void actualizarAnimacion(int tiempoGlobal) {
             // Frecuencia variable en el tiempo
             float fMin = 5.0f;
             float fMax = 12.0f;
-            float ciclo = 5.0f;  // segundos para completar una oscilación de frecuencia
             float f = fMax;
 
             if (tiempoGlobal >= 3000 && tiempoGlobal <= 5000) {
@@ -162,7 +159,7 @@ void actualizarAnimacion(int tiempoGlobal) {
             float tTambaleoSeg = (tiempoGlobal - estado->tiempoInicio) / 1000.0f;
             float angulo = sinf(tTambaleoSeg * 2.0f) * 3.0f;
 
-            // Parámetros para escalar y trasladar, con desfase de 3 segundos
+            // Escalar y Trasladar
             int inicioEscalaYtrasl = estado->tiempoInicio + 3000;
             int finEscalaYtrasl = inicioEscalaYtrasl + 5000;
 
@@ -172,7 +169,7 @@ void actualizarAnimacion(int tiempoGlobal) {
                 if (tRaw > 1.0f) tRaw = 1.0f;
                 if (tRaw < 0.0f) tRaw = 0.0f;
 
-                // Ease in-out (curva suave tiRecuerdpo S)
+                // Ease in-out
                 tMov = tRaw * tRaw * (3 - 2 * tRaw);
                 if (tMov > 1.0f) tMov = 1.0f;
             }
@@ -193,10 +190,10 @@ void actualizarAnimacion(int tiempoGlobal) {
 
             posX += desplazamientoX;
 
-            // Movimiento vertical adicional (de -0.2 a 0.3 por ejemplo)
-            float posY = -0.2f + tMov * 0.05f;  // Subir 0.5 unidades mientras avanza
+            // Movimiento vertical
+            float posY = -0.2f + tMov * 0.05f;  // Subir 0.05 unidades mientras avanza
 
-            // Escala de 0.3x a 1.0x
+            // Escala de 0.3x a 0.7x
             float escala = 0.3f + tMov * 0.7f;
 
             // Construir transformación final: T(x) * T(-y) * R(ángulo) * T(y) * S(escala)
@@ -277,8 +274,7 @@ void initGrupos() {
     g1->numVectores = 0;
     matIdentidad(g1->transformacion);
 
-    // Nota: aquí solo inicializamos vectores, pero serán actualizados dinámicamente
-    estadosAnimacion[1].tiempoInicio = 0;  // Ejemplo: empieza en 2s
+    estadosAnimacion[1].tiempoInicio = 0;
     estadosAnimacion[1].tiempoFin = 20000;
     estadosAnimacion[1].anguloActual = 0.0f;
     estadosAnimacion[1].desplazamiento = 0.0f;
@@ -294,16 +290,19 @@ void init() {
 }
 
 int main(int argc, char** argv) {
+    const int FPS = 144;
+
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(900, 900);
     glutCreateWindow("Animacion con Grupos de Vectores");
 
     init();
+    glClearColor(0.12f, 0.12f, 0.15f, 1.0f); // Fondo azul claro
     reshape(900, 900);
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
-    glutTimerFunc(50, update, 0);
+    glutTimerFunc(1000 / FPS, update, 0);
     glutMainLoop();
     return 0;
 }
